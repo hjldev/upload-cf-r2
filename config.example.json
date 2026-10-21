@@ -1,0 +1,7 @@
+{
+  "account_id": "your-cloudflare-account-id",
+  "access_key_id": "your-r2-access-key-id",
+  "secret_access_key": "your-r2-secret-access-key",
+  "bucket": "my-bucket",
+  "public_url": "https://cdn.example.com"
+}
