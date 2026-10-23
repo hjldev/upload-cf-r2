@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -251,6 +252,106 @@ func TestInitVerify(t *testing.T) {
 	}
 	if got := loadConfig(t, bad); got.Bucket != "nope" {
 		t.Errorf("应保存配置, got %+v", got)
+	}
+}
+
+func TestMultipart(t *testing.T) {
+	clearR2Env(t)
+	srv := newFakeS3(t, "test")
+	t.Setenv("R2_ACCESS_KEY_ID", "test-id")
+	t.Setenv("R2_SECRET_ACCESS_KEY", "test-secret")
+	t.Setenv("R2_BUCKET", "test")
+	t.Setenv("R2_ENDPOINT", srv.URL)
+
+	client, err := r2.NewClient(config.Config{Endpoint: srv.URL, AccessKeyID: "x", SecretAccessKey: "y", Bucket: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	// 模拟中断的上传：创建分片上传、传了部分分片，但没有完成也没有取消。
+	startUpload := func(key string, partSizes ...int) {
+		t.Helper()
+		create, err := client.S3.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{Bucket: aws.String("test"), Key: &key})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, n := range partSizes {
+			_, err := client.S3.UploadPart(ctx, &s3.UploadPartInput{
+				Bucket: aws.String("test"), Key: &key, UploadId: create.UploadId,
+				PartNumber: aws.Int32(int32(i + 1)), Body: bytes.NewReader(make([]byte, n)),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	startUpload("tmp/big.bin", 5*r2.MiB, 1024)
+	startUpload("keep/x.bin", 2048)
+
+	stdout, stderr, err := run(t, "multipart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, "2 片") || !strings.Contains(stdout, "tmp/big.bin") || !strings.Contains(stdout, "keep/x.bin") {
+		t.Errorf("multipart 输出不符:\n%s", stdout)
+	}
+	if want := "共 2 个未完成的分片上传，占用 " + humanBytes(5*r2.MiB+1024+2048); !strings.Contains(stderr, want) {
+		t.Errorf("汇总应包含 %q:\n%s", want, stderr)
+	}
+
+	_, stderr, _ = run(t, "ls")
+	if !strings.Contains(stderr, "另有 2 个未完成的分片上传") {
+		t.Errorf("ls 应提示未完成的分片上传:\n%s", stderr)
+	}
+
+	_, stderr, _ = run(t, "mp", "ls", "--older-than", "1h")
+	if !strings.Contains(stderr, "共 0 个") || !strings.Contains(stderr, "另有 2 个开始不到 1h0m0s") {
+		t.Errorf("--older-than 应过滤掉刚开始的上传:\n%s", stderr)
+	}
+
+	// 未确认时不清理：回答 n，或者非交互输入直接结束
+	if _, _, err := runIn(t, "n\n", "multipart", "clean", "tmp/"); err == nil {
+		t.Error("回答 n 时应报错")
+	}
+	if _, _, err := run(t, "multipart", "clean", "tmp/"); err == nil || !strings.Contains(err.Error(), "-y") {
+		t.Errorf("无输入时应提示加 -y, got %v", err)
+	}
+	if n, _ := client.CountIncompleteUploads(ctx, ""); n != 2 {
+		t.Fatalf("未确认时不应清理，剩余 %d 个", n)
+	}
+
+	stdout, _, err = run(t, "multipart", "clean", "tmp/", "-y")
+	if err != nil || !strings.Contains(stdout, "已清理 tmp/big.bin") {
+		t.Errorf("clean -y 失败: %v\n%s", err, stdout)
+	}
+	left, err := client.ListIncompleteUploads(ctx, "")
+	if err != nil || len(left) != 1 || left[0].Key != "keep/x.bin" {
+		t.Errorf("应只清理前缀 tmp/ 下的上传，剩余 %+v, %v", left, err)
+	}
+
+	if _, _, err := runIn(t, "y\n", "multipart", "clean"); err != nil {
+		t.Errorf("确认后清理失败: %v", err)
+	}
+	if n, _ := client.CountIncompleteUploads(ctx, ""); n != 0 {
+		t.Errorf("全部清理后仍剩 %d 个", n)
+	}
+	_, stderr, _ = run(t, "multipart", "clean")
+	if !strings.Contains(stderr, "没有需要清理") {
+		t.Errorf("没有未完成上传时应如实提示:\n%s", stderr)
+	}
+}
+
+func TestHumanAge(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		-time.Second:                  "0s",
+		45 * time.Second:              "45s",
+		5 * time.Minute:               "5m",
+		3*time.Hour + 12*time.Minute:  "3h12m",
+		50*time.Hour + 30*time.Minute: "2d2h",
+	} {
+		if got := humanAge(d); got != want {
+			t.Errorf("humanAge(%v) = %q, want %q", d, got, want)
+		}
 	}
 }
 

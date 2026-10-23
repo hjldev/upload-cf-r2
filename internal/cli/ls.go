@@ -52,6 +52,11 @@ func newLsCmd(g *globalFlags) *cobra.Command {
 				}
 			}
 			fmt.Fprintf(cmd.ErrOrStderr(), "共 %d 个对象，%s\n", count, humanBytes(total))
+			// 未完成的分片上传不在对象列表里，但同样占用空间，提示一下。
+			// 只是提示，令牌没有相应权限等错误直接忽略。
+			if n, err := client.CountIncompleteUploads(cmd.Context(), firstArg(args)); err == nil && n > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "另有 %d 个未完成的分片上传也在占用空间，可用 r2up multipart 查看\n", n)
+			}
 			return nil
 		},
 	}

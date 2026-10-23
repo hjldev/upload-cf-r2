@@ -38,8 +38,11 @@ func newInitCmd(g *globalFlags) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := runInit(cmd, g, noVerify)
-			if errors.Is(err, context.Canceled) {
+			switch {
+			case errors.Is(err, context.Canceled):
 				return errors.New("已取消，配置未保存")
+			case errors.Is(err, errInputEnded):
+				return errors.New("输入已结束，配置未保存")
 			}
 			return err
 		},
@@ -191,6 +194,9 @@ func maskSecret(s string) string {
 	return "****" + s[len(s)-4:]
 }
 
+// errInputEnded 表示输入在得到回答前就结束了（如管道输入不足）。
+var errInputEnded = errors.New("输入已结束")
+
 // prompter 逐行读取用户输入。输入来自终端时，密钥输入不回显；
 // 来自管道时按行读取，便于脚本化：printf '...\n' | r2up init。
 type prompter struct {
@@ -286,7 +292,7 @@ func (p *prompter) readLine(ctx context.Context, secret bool) (string, error) {
 			fmt.Fprintln(p.out) // ReadPassword 不回显用户按下的回车
 		}
 		if r.err == io.EOF {
-			return "", errors.New("输入已结束，配置未保存")
+			return "", errInputEnded
 		}
 		return strings.TrimSpace(r.line), r.err
 	case <-ctx.Done():

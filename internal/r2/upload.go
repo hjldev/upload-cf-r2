@@ -97,9 +97,7 @@ func (c *Client) UploadFile(ctx context.Context, job Job, opts UploadOptions, on
 		// 原 ctx 可能已被取消（如 Ctrl+C），用独立的 ctx 清理未完成的分片，避免产生存储费用。
 		abortCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		_, _ = c.S3.AbortMultipartUpload(abortCtx, &s3.AbortMultipartUploadInput{
-			Bucket: &c.Bucket, Key: &job.Key, UploadId: create.UploadId,
-		})
+		_ = c.AbortUpload(abortCtx, job.Key, aws.ToString(create.UploadId))
 		return false, err
 	}
 	return false, nil

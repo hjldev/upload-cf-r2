@@ -8,6 +8,7 @@
 - `--skip-existing` 跳过远端已存在且大小相同的文件，适合重复同步
 - `r2up init` 交互式填写凭证、测试连接并写入配置文件
 - 附带 `ls`、`rm`、`presign`（生成下载/上传预签名链接）
+- `r2up multipart` 列出并清理中断后残留的分片上传
 
 ## 安装
 
@@ -117,7 +118,7 @@ r2up presign incoming/data.csv --put
 curl -T data.csv "<上一步输出的链接>"
 ```
 
-> 如果本地文件名恰好和子命令同名（`init`、`ls`、`rm`、`presign`、`upload`、`help`、`completion` 以及别名 `up`、`cp`、`delete`），
+> 如果本地文件名恰好和子命令同名（`init`、`ls`、`rm`、`presign`、`upload`、`multipart`、`help`、`completion` 以及别名 `up`、`cp`、`delete`、`mp`），
 > 会被当成子命令执行，此时请写成 `r2up upload ls` 或 `r2up ./ls`。
 > 首个参数既不是本地文件、又和某个子命令很像时（如 `r2up uplod x`），会提示可能想用的子命令，而不会去上传。
 
@@ -139,6 +140,32 @@ curl -T data.csv "<上一步输出的链接>"
 | `-q, --quiet` | false | 只输出错误 |
 
 有文件上传失败时退出码为 1，其余文件会继续上传。
+
+## 清理未完成的分片上传
+
+分片上传中途中断时，已传上去的分片会留在存储桶里：它们**不会出现在 `r2up ls` 的对象列表中，但同样占用空间并计费**。
+r2up 在上传出错或按 Ctrl+C 时会自动清理；但如果进程被强制结束、电脑断电或断网导致清理请求发不出去，分片就会残留。
+
+```bash
+# 列出未完成的分片上传及占用空间（可加前缀过滤）
+r2up multipart
+r2up multipart videos/
+
+# 清理：先列出，确认后取消上传并删除已传的分片
+r2up multipart clean
+
+# 只清理一天前开始的上传，不询问（适合放进定时任务）
+r2up multipart clean --older-than 24h -y
+```
+
+```
+2026-10-23 14:22:08    3h12m 前    10 片   80.0 MiB  videos/big.bin
+共 1 个未完成的分片上传，占用 80.0 MiB
+```
+
+- `r2up ls` 发现同一前缀下有未完成的分片上传时，会在末尾提示数量。
+- **正在进行中的上传也会出现在列表里**，清理它会导致那次上传失败。别处可能还在上传时，用 `--older-than` 只清理较早的。
+- 非交互环境（如脚本、CI）下 `clean` 必须加 `-y` 才会执行。
 
 ## 实现说明
 

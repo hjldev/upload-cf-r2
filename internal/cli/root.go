@@ -72,6 +72,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newLsCmd(g),
 		newRmCmd(g),
 		newPresignCmd(g),
+		newMultipartCmd(g),
 	)
 	return root
 }
