@@ -129,9 +129,9 @@ curl -T data.csv "<上一步输出的链接>"
 | `-k, --key` | | 单个文件的完整 key，不能与 `--prefix` 同时使用 |
 | `-x, --exclude` | | 排除匹配文件名或相对路径的 glob，可重复；匹配到目录时整个目录跳过 |
 | `-j, --concurrency` | 4 | 同时上传的文件数 |
-| `--part-concurrency` | 4 | 单个文件同时上传的分片数 |
-| `--part-size` | 16 | 分片大小（MiB，≥5；超大文件会自动调大以满足 10000 片上限） |
-| `--multipart-threshold` | 100 | 超过该大小（MiB）使用分片上传 |
+| `--part-concurrency` | 10 | 单个文件同时上传的分片数 |
+| `--part-size` | 8 | 分片大小（MiB，≥5；超大文件会自动调大以满足 10000 片上限） |
+| `--multipart-threshold` | 16 | 超过该大小（MiB）使用分片上传 |
 | `--content-type` | 自动 | 覆盖 Content-Type |
 | `--cache-control` | | 设置 Cache-Control |
 | `--skip-existing` | false | 跳过远端已存在且大小相同的对象 |

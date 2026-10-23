@@ -59,9 +59,11 @@ func addUploadFlags(fl *pflag.FlagSet, f *uploadFlags) {
 	fl.StringVarP(&f.key, "key", "k", "", "单个文件的完整对象 key")
 	fl.StringArrayVarP(&f.excludes, "exclude", "x", nil, "排除匹配的文件名或相对路径（glob，可重复）")
 	fl.IntVarP(&f.concurrency, "concurrency", "j", 4, "同时上传的文件数")
-	fl.IntVar(&f.partConcurrency, "part-concurrency", 4, "单个文件同时上传的分片数")
-	fl.Int64Var(&f.partSizeMiB, "part-size", 16, "分片大小（MiB，至少 5）")
-	fl.Int64Var(&f.thresholdMiB, "multipart-threshold", 100, "超过该大小（MiB）使用分片上传")
+	// 远距离链路上单条连接的吞吐有限，总速度主要取决于同时在传的分片数，
+	// 所以阈值和分片都偏小、并发偏高，让中等大小的文件也能多路并行。
+	fl.IntVar(&f.partConcurrency, "part-concurrency", 10, "单个文件同时上传的分片数")
+	fl.Int64Var(&f.partSizeMiB, "part-size", 8, "分片大小（MiB，至少 5）")
+	fl.Int64Var(&f.thresholdMiB, "multipart-threshold", 16, "超过该大小（MiB）使用分片上传")
 	fl.StringVar(&f.contentType, "content-type", "", "指定 Content-Type（默认自动识别）")
 	fl.StringVar(&f.cacheControl, "cache-control", "", "设置 Cache-Control 头")
 	fl.BoolVar(&f.skipExisting, "skip-existing", false, "跳过远端已存在且大小相同的对象")
